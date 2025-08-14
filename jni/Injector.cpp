@@ -7,7 +7,7 @@
 void print_help() {
     printf("Usage: Injector [options]\n");
     printf("Options:\n");
-    printf("  -p, --pkg <package>         Set the package name\n");
+    printf("  -p, --pid <package>         Set the package name\n");
     printf("  -l, --library <library>     Set the library path\n");
     printf("  -a, --auto_launch           Enable auto launch\n");
     printf("  --launcher <launcher>       Set the launcher (required with --auto_launch)\n");
@@ -19,12 +19,12 @@ int main(int argc, char *argv[]) {
     int opt;
     bool auto_launch = false;
     bool remap = false;
-    const char* native_pkg = nullptr;
+    const char* native_pid = nullptr;
     const char* native_library = nullptr;
     const char* launcher_activity = nullptr;
     
     struct option long_options[] = {
-        {"pkg",          required_argument, 0, 'p'},
+        {"pid",          required_argument, 0, 'p'},
         {"library",      required_argument, 0, 'l'},
         {"auto_launch",  required_argument, 0, 'a'},
         {"remap",        required_argument, 0, 'r'},
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt_long(argc, argv, "p:l:aL:rh", long_options, &long_index)) != -1) {
         switch (opt) {
             case 'p':
-                native_pkg = optarg;
+                native_pid = optarg;
                 break;
             case 'l':
                 native_library = optarg;
@@ -57,13 +57,13 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    LOGI("[+] Package: %s", native_pkg);
+    LOGI("[+] PID: %s", native_pid);
     LOGI("[+] Library: %s", native_library);
     LOGI("[+] Auto Launch: %s", auto_launch ? "Enabled" : "Disabled");
     LOGI("[+] Launcher: %s", launcher_activity);
     LOGI("[+] Remap: %s", remap ? "Enabled" : "Disabled");
 
-    if (!native_pkg || !native_library || (auto_launch && !launcher_activity)) {
+    if (!native_pid || !native_library || (auto_launch && !launcher_activity)) {
         LOGE("[-] Missing required arguments");
         print_help();
         return 0;
@@ -74,13 +74,22 @@ int main(int argc, char *argv[]) {
         RevMemory::launch_app(launcher_activity);
     }
 
-    // Wait until the process is found
     pid_t pid = -1;
-    while (pid <= 0) {
-        pid = RevMemory::find_process_id(native_pkg);
-        sleep(1);
+
+    // safer than atoi, can detect errors
+    char *endptr;
+    long val = strtol(native_pid, &endptr, 10);
+
+    if (*endptr != '\0') {
+        fprintf(stderr, "Invalid PID: %s\n", native_pid);
+        return 1;
     }
-    LOGI("[+] Found Target process %s with pid %d", native_pkg, pid);
+    if (val <= 0) {
+        fprintf(stderr, "PID must be positive\n");
+        return 1;
+    }
+
+    pid = (pid_t)val;
 
     // Handle SELinux
     // NOTE: Causes crashes on emulators, most emulators don't need selinux
